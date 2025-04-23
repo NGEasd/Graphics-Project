@@ -91,7 +91,7 @@ namespace Labirintus_projekt
             foreach (var keyboard in inputContext.Keyboards)
             {
                 keyboard.KeyDown += Keyboard_KeyDown;
-                // keyboard.KeyUp += Keyboard_KeyUp;
+                keyboard.KeyUp += Keyboard_KeyUp;
             }
 
             // Handle resizes
@@ -164,48 +164,13 @@ namespace Labirintus_projekt
             }
         }
 
-        private static void Keyboard_KeyDown(IKeyboard keyboard, Key key, int arg3)
-        {
-            switch (key)
-            {
-                case Key.W:
-                    camera.MoveForward();
-                    break;
-                case Key.S:
-                    camera.MoveBackward();
-                    break;
-                case Key.A:
-                    camera.MoveLeft();
-                    break;
-                case Key.D:
-                    camera.MoveRight();
-                    break;
-                case Key.Space:
-                    camera.MoveUp();
-                    break;
-                case Key.ShiftLeft:
-                    camera.MoveDown();
-                    break;
-                case Key.Left:
-                    camera.Rotate(-5, 0);
-                    break;
-                case Key.Right:
-                    camera.Rotate(5, 0);
-                    break;
-                case Key.Up:
-                    camera.Rotate(0, 5);
-                    break;
-                case Key.Down:
-                    camera.Rotate(0, -5);
-                    break;
-            }
-        }
-
         private static void GraphicWindow_Update(double deltaTime)
         {
             // NO OpenGL
             // make it threadsafe
+            MoveCamera();
             imGuiController.Update((float)deltaTime);
+
         }
 
         private static unsafe void GraphicWindow_Render(double deltaTime)
@@ -338,5 +303,89 @@ namespace Labirintus_projekt
             if (error != ErrorCode.NoError)
                 throw new Exception("GL.GetError() returned " + error.ToString());
         }
+
+
+        // camera controll
+        private static void Keyboard_KeyDown(IKeyboard keyboard, Key key, int arg3)
+        {
+            if (!camera.isMoving)
+            {
+                camera.isMoving = true;
+                switch (key)
+                {
+                    case Key.W:
+                        camera.pressedForward = true;
+                        break;
+                    case Key.S:
+                        camera.pressedBackward = true;
+                        break;
+                    case Key.A:
+                        camera.pressedLeft = true;
+                        break;
+                    case Key.D:
+                        camera.pressedRight = true;
+                        break;
+                    case Key.Space:
+                        camera.MoveUp();
+                        break;
+                    case Key.ShiftLeft:
+                        camera.MoveDown();
+                        break;
+                    case Key.Left:
+                        camera.Rotate(-5, 0);
+                        break;
+                    case Key.Right:
+                        camera.Rotate(5, 0);
+                        break;
+                    case Key.Up:
+                        camera.Rotate(0, 5);
+                        break;
+                    case Key.Down:
+                        camera.Rotate(0, -5);
+                        break;
+                }
+            }
+        }
+
+        private static void Keyboard_KeyUp(IKeyboard keyboard, Key key, int arg3)
+        {
+            camera.isMoving = false;
+            switch (key)
+            {
+                case Key.W:
+                    camera.pressedForward = false;
+                    break;
+                case Key.S:
+                    camera.pressedBackward = false;
+                    break;
+                case Key.A:
+                    camera.pressedLeft = false;
+                    break;
+                case Key.D:
+                    camera.pressedRight = false;
+                    break;
+            }
+        }
+
+        private static void MoveCamera()
+        {
+            if (camera.pressedForward)
+            {
+                camera.MoveForward();
+            }
+            else if (camera.pressedBackward)
+            {
+                camera.MoveBackward();
+            }
+            else if (camera.pressedLeft)
+            {
+                camera.MoveLeft();
+            }
+            else if (camera.pressedRight)
+            {
+                camera.MoveRight();
+            }
+        }
+
     }
 }

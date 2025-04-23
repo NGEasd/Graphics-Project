@@ -7,11 +7,18 @@ public class CameraDescriptor
     public Vector3D<float> UpVector { get; private set; } = new Vector3D<float>(0, 1, 0);
     public Vector3D<float> RightVector => Vector3D.Normalize(Vector3D.Cross(ForwardVector, UpVector));
 
+    // pressed flags
+    public bool isMoving = false;
+    public bool pressedForward = false;
+    public bool pressedBackward = false;
+    public bool pressedLeft = false;
+    public bool pressedRight = false;
+
     public float Yaw { get; private set; } = -MathF.PI / 2;
     public float Pitch { get; private set; } = 0;
 
     private const float Sensitivity = 0.05f;
-    private const float MoveSpeed = 0.5f;
+    private const float MoveSpeed = 0.05f;
 
     public void setPosition (int x, int y)
     {

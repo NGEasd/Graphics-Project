@@ -20,19 +20,19 @@ namespace Labirintus_projekt
         {
 
             string[] hardcodedMap = new string[] {
-                "113311111111111111111",
-                "110011111111111111111",
+                "113311111199111119911",
+                "110011111100111110009",
                 "110010001000100010011",
                 "110011111011111010011",
-                "110000000000000000011",
-                "110000000000000000011",
-                "111111011111011111111",
-                "110000000000000000011",
-                "110000000000000000011",
-                "110011111011111010011",
-                "110010001000100010011",
-                "111111111111111110211",
-                "111111111111111111111"
+                "110000000000000000009",
+                "110000000000000000009",
+                "111111911119911119111",
+                "110000000000000000009",
+                "110000000000000000009",
+                "900011111011111010011",
+                "900001000100010001001",
+                "111111011100111110211",
+                "111111111199111119911"
             };
 
             Height = hardcodedMap.Length;
@@ -76,6 +76,16 @@ namespace Labirintus_projekt
             return Get(x, y) == 1;
         }
 
+        public bool IsWindow(int x, int y)
+        {
+            return Get(x, y) == 9;
+        }
+
+        public bool IsInside(int x, int y)
+        {
+            return x >= 0 && x < Height && y >= 0 && y < Width;
+        }
+
         public void PrintToConsole()
         {
             for (int y = 0; y < Height; y++)
@@ -86,6 +96,10 @@ namespace Labirintus_projekt
                 }
                 Console.WriteLine();
             }
+        }
+        public int[] getLabirintCenter()
+        {
+            return new int[] { Width / 2, Height / 2 };
         }
     }
 }

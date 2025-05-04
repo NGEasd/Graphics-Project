@@ -2,6 +2,7 @@
 using ImGuiNET;
 using Silk.NET.Input;
 using Silk.NET.Maths;
+using Silk.NET.OpenAL;
 using Silk.NET.OpenGL;
 using Silk.NET.OpenGL.Extensions.ImGui;
 using Silk.NET.Windowing;
@@ -26,6 +27,10 @@ namespace Labirintus_projekt
 
         private static CameraDescriptor camera = new CameraDescriptor();
 
+        // game variables
+        private static bool collisionMessage = false;
+        private static double messageTimer = 0.0f;
+
 
         private const string ModelMatrixVariableName = "uModel";
         private const string NormalMatrixVariableName = "uNormal";
@@ -42,8 +47,8 @@ namespace Labirintus_projekt
         private const string SpecularVariableName = "uSpecularStrength";
 
         private static float shininess = 50;
-        private static Vector3 ambientStrength = new Vector3(0.1f, 0.1f, 0.1f);
-        private static Vector3 diffuseStrength = new Vector3(0.3f, 0.3f, 0.3f);
+        private static Vector3 ambientStrength = new Vector3(0.5f, 0.5f, 0.5f);
+        private static Vector3 diffuseStrength = new Vector3(0.5f, 0.5f, 0.5f);
         private static Vector3 specularStrength = new Vector3(0.6f, 0.6f, 0.6f);
 
         private static float lightPosX = 0f;
@@ -78,16 +83,26 @@ namespace Labirintus_projekt
         {
             Gl = graphicWindow.CreateOpenGL();
 
+            // initialize labirint
             labirint = new LabirintMap();
             walls = new LabirintWalls(labirint, Gl);
             floor = WallObject.CreateFloor(Gl);
 
+            // initialize starting position
             var pos = labirint.GetStartingPosition();
             startX = pos[0];
             startY = pos[1];
             camera.setPosition(startX, startY);
 
-            var inputContext = graphicWindow.CreateInput();
+            // set lightning
+            int[] camStartPos = labirint.getLabirintCenter();
+            lightPosX = camStartPos[0];
+            lightPosY = 5.5f;
+            lightPosZ = camStartPos[1];
+
+
+        // directing player
+        var inputContext = graphicWindow.CreateInput();
             foreach (var keyboard in inputContext.Keyboards)
             {
                 keyboard.KeyDown += Keyboard_KeyDown;
@@ -169,7 +184,12 @@ namespace Labirintus_projekt
             // NO OpenGL
             // make it threadsafe
             MoveCamera();
+            RotateCamera();
             imGuiController.Update((float)deltaTime);
+
+            // collision check (for now - just camera)
+            checkCollision();
+            
 
         }
 
@@ -195,31 +215,58 @@ namespace Labirintus_projekt
             var projectionMatrix = Matrix4X4.CreatePerspectiveFieldOfView((float)(Math.PI / 2), 1024f / 768f, 0.1f, 100f);
             SetMatrix(projectionMatrix, ProjectionMatrixVariableName);
 
-            
             for (int i = 0; i < walls.wallList.Count; i++)
             {
                 var wall = walls.wallList[i];
-                var transform = walls.transformations[i];
+                var transform = walls.wallTransformations[i];
 
                 SetModelMatrix(transform);
                 DrawModelObject(wall);
             }
 
+            var t = Matrix4X4.CreateTranslation(0f, 0f, 0f);
+            SetModelMatrix(t);
             DrawModelObject(floor);
 
+            for (int i = 0; i < walls.windows.Count; i++)
+            {
+                var window = walls.windows[i];
+                var transform = walls.windowTransformations[i];
 
-            //ImGuiNET.ImGui.ShowDemoWindow();
-            ImGui.Begin("Lighting", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoCollapse);
-            ImGui.SliderFloat("Shininess", ref shininess, 5, 100);
-            ImGui.SliderFloat3("Ambient Strength", ref ambientStrength, 0.0f, 1.0f);
-            ImGui.SliderFloat3("Diffuse Strength", ref diffuseStrength, 0.0f, 1.0f);
-            ImGui.SliderFloat3("Specular Strength", ref specularStrength, 0.0f, 1.0f);
+                SetModelMatrix(transform);
+                DrawGlObject(window);
+            }
 
-            // kamera pozicionalasa
-            ImGui.Begin("Light position");
-            ImGui.InputFloat("X", ref lightPosX);
-            ImGui.InputFloat("Y", ref lightPosY);
-            ImGui.InputFloat("Z", ref lightPosZ);
+            // utkozesi hibauzenet
+            if (collisionMessage)
+            {
+                ShowCollisionMessage();
+                messageTimer -= deltaTime;
+                if (messageTimer <= 0.0f)
+                {
+                    collisionMessage = false;
+                }
+            }
+
+            // Ghost Mode gomb
+            ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.Always);
+            ImGui.Begin("Camera Mode", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove);
+
+            if (camera.ghostMode)
+            {
+                ImGui.BeginDisabled();
+            }
+
+            if (ImGui.Button("GHOST MODE"))
+            {
+                camera.changeCameraModeToGhost();
+            }
+
+            if (camera.defaultMode)
+            {
+                ImGui.EndDisabled();
+            }
+
             ImGui.End();
 
 
@@ -285,6 +332,13 @@ namespace Labirintus_projekt
             Gl.BindVertexArray(0);
         }
 
+        private static unsafe void DrawGlObject(GlObject obj)
+        {
+            Gl.BindVertexArray(obj.Vao);
+            Gl.DrawElements(GLEnum.Triangles, obj.IndexArrayLength, GLEnum.UnsignedInt, null);
+            Gl.BindVertexArray(0);
+        }
+
         private static unsafe void SetMatrix(Matrix4X4<float> mx, string uniformName)
         {
             int location = Gl.GetUniformLocation(program, uniformName);
@@ -308,48 +362,46 @@ namespace Labirintus_projekt
         // camera controll
         private static void Keyboard_KeyDown(IKeyboard keyboard, Key key, int arg3)
         {
-            if (!camera.isMoving)
+            switch (key)
             {
-                camera.isMoving = true;
-                switch (key)
-                {
-                    case Key.W:
-                        camera.pressedForward = true;
-                        break;
-                    case Key.S:
-                        camera.pressedBackward = true;
-                        break;
-                    case Key.A:
-                        camera.pressedLeft = true;
-                        break;
-                    case Key.D:
-                        camera.pressedRight = true;
-                        break;
-                    case Key.Space:
-                        camera.MoveUp();
-                        break;
-                    case Key.ShiftLeft:
-                        camera.MoveDown();
-                        break;
-                    case Key.Left:
-                        camera.Rotate(-5, 0);
-                        break;
-                    case Key.Right:
-                        camera.Rotate(5, 0);
-                        break;
-                    case Key.Up:
-                        camera.Rotate(0, 5);
-                        break;
-                    case Key.Down:
-                        camera.Rotate(0, -5);
-                        break;
-                }
+                case Key.W:
+                    camera.pressedForward = true;
+                    break;
+                case Key.S:
+                    camera.pressedBackward = true;
+                    break;
+                case Key.A:
+                    camera.pressedLeft = true;
+                    break;
+                case Key.D:
+                    camera.pressedRight = true;
+                    break;
+
+                case Key.Space:
+                    camera.MoveUp();
+                    break;
+                case Key.ShiftLeft:
+                    camera.MoveDown();
+                    break;
+
+                case Key.Left:
+                    camera.pressedRLeft = true;
+                    break;
+                case Key.Right:
+                    camera.pressedRRight = true;
+                    break;
+                case Key.Up:
+                    camera.pressedRUp = true;
+                    break;
+                case Key.Down:
+                    camera.pressedRDown = true;
+                    break;
             }
+                 
         }
 
         private static void Keyboard_KeyUp(IKeyboard keyboard, Key key, int arg3)
         {
-            camera.isMoving = false;
             switch (key)
             {
                 case Key.W:
@@ -363,6 +415,18 @@ namespace Labirintus_projekt
                     break;
                 case Key.D:
                     camera.pressedRight = false;
+                    break;
+                case Key.Left:
+                    camera.pressedRLeft = false;
+                    break;
+                case Key.Right:
+                    camera.pressedRRight = false;
+                    break;
+                case Key.Up:
+                    camera.pressedRUp = false;
+                    break;
+                case Key.Down:
+                    camera.pressedRDown = false;
                     break;
             }
         }
@@ -387,5 +451,78 @@ namespace Labirintus_projekt
             }
         }
 
+        private static void RotateCamera()
+        {
+            if (camera.pressedRLeft)
+            {
+                camera.Rotate(-1, 0);
+            }
+            else if (camera.pressedRRight)
+            {
+                camera.Rotate(1, 0);
+            }
+            else if (camera.pressedRUp)
+            {
+                camera.Rotate(0, 1);
+            }
+            else if (camera.pressedRDown)
+            {
+                camera.Rotate(0, -1);
+            }
+        }
+
+        // GAME LOGICS
+        private static void checkCollision()
+        {
+            int mapX = (int)Math.Floor(camera.Position.X);
+            int mapY = (int)Math.Floor(camera.Position.Z);
+
+            int tile = labirint.Get(mapX, mapY);
+            bool isObstacle = tile == 1 || tile == 9;
+
+            if (isObstacle)
+            {
+                Console.WriteLine("Nekiütköztél egy falnak vagy akadálynak!");
+                collisionMessage = true;
+
+                // Kamera visszaállítása kezdőpozícióra
+                camera.setPosition(startX, startY);
+                messageTimer = 2.0;
+
+            }
+        }
+
+
+        // GRAPHICS
+        private static void ShowCollisionMessage()
+        {
+            var io = ImGui.GetIO();
+            var windowWidth = io.DisplaySize.X;
+            var windowHeight = io.DisplaySize.Y;
+
+            var messageWidth = 400f;
+            var messageHeight = 20f;
+
+            // Sáv pozíció a képernyő közepén (felülről kicsit lejjebb)
+            var posX = (windowWidth - messageWidth) / 2f;
+            var posY = windowHeight * 0.25f;
+
+            ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
+            ImGui.SetNextWindowSize(new Vector2(messageWidth, messageHeight));
+            ImGui.SetNextWindowBgAlpha(1.0f); // teljesen átlátszatlan háttér
+
+            ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0f, 0f, 0f, 0.85f)); // fekete háttér
+            ImGui.Begin("CollisionMessage", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
+                                            ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse |
+                                            ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoSavedSettings);
+
+            ImGui.SetCursorPosX((messageWidth - ImGui.CalcTextSize("JUST COLLIDED WITH THE WALLS - LETS START AGAIN!").X) / 2f);
+            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.3f, 0.3f, 1f)); // piros szöveg
+            ImGui.Text("JUST COLLIDED WITH THE WALLS - LETS START AGAIN!");
+            ImGui.PopStyleColor();
+
+            ImGui.End();
+            ImGui.PopStyleColor();
+        }
     }
 }

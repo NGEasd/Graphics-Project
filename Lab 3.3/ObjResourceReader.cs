@@ -6,7 +6,7 @@ namespace Labirintus_projekt
 {
     internal class ObjResourceReader
     {
-        public static unsafe GlObject CreateObject(GL Gl, float[] faceColor)
+        public static unsafe GlObject CreateObject(GL Gl, float[] faceColor, string objPath)
         {
             uint vao = Gl.GenVertexArray();
             Gl.BindVertexArray(vao);
@@ -14,7 +14,7 @@ namespace Labirintus_projekt
             List<float[]> objVertices;
             List<int[]> objFaces;
 
-            ReadObjData(out objVertices, out objFaces);
+            ReadObjData(out objVertices, out objFaces, objPath);
 
             List<float> glVertices = new List<float>();
             List<float> glColors = new List<float>();
@@ -100,7 +100,7 @@ namespace Labirintus_projekt
             }
         }
 
-        private static unsafe void ReadObjData(out List<float[]> objVertices, out List<int[]> objFaces)
+        private static unsafe void ReadObjData(out List<float[]> objVertices, out List<int[]> objFaces, string objPath)
         {
             objVertices = new List<float[]>();
             objFaces = new List<int[]>();
@@ -108,7 +108,7 @@ namespace Labirintus_projekt
             var assembly = typeof(ObjResourceReader).Assembly;
             string[] resourceNames = assembly.GetManifestResourceNames();
 
-            using (Stream objStream = typeof(ObjResourceReader).Assembly.GetManifestResourceStream("LabirintusProjekt.Resources.bars.obj"))
+            using (Stream objStream = typeof(ObjResourceReader).Assembly.GetManifestResourceStream(objPath))
             using (StreamReader objReader = new StreamReader(objStream))
             {
                 while (!objReader.EndOfStream)

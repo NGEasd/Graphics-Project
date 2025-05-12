@@ -1,12 +1,13 @@
-﻿using GrafikaSzeminarium;
-using Silk.NET.Maths;
+﻿using Silk.NET.Maths;
 using Silk.NET.OpenGL;
+using LabirintusProjekt;
 
 namespace Labirintus_projekt
 {
-    class LabirintWalls
+    class LabirintComponents
     {
         public List<GlObject> windows;
+        public List<Solider> soliders;
         public List<WallObject> wallList;
         public List<Matrix4X4<float>> windowTransformations;
         public List<Matrix4X4<float>> wallTransformations;
@@ -15,9 +16,10 @@ namespace Labirintus_projekt
         private readonly int[] directionX = new int[] { -1, 0, 1, 0 }; // bal, fel, jobb, le
         private readonly int[] directionY = new int[] { 0, -1, 0, 1 };
 
-        public LabirintWalls(LabirintMap labirintMap, GL gl)
+        public LabirintComponents(LabirintMap labirintMap, GL gl)
         {
             windows = new List<GlObject>();
+            soliders = new List<Solider>();
             wallList = new List<WallObject>();
             windowTransformations = new List<Matrix4X4<float>>();
             wallTransformations = new List<Matrix4X4<float>>();
@@ -37,29 +39,34 @@ namespace Labirintus_projekt
                         wallTransformations.Add(translation);
                     }
 
+                    if (labirintMap.Get(x, y) == 7)
+                    {
+                        Solider solider = new Solider(Gl, new Vector3D<float>(x, 0f, y));
+                        soliders.Add(solider);
+                    }
+
                     if (labirintMap.Get(x, y) == 9)
                     { 
 
-                        var window = ObjResourceReader.CreateObject(Gl, [0.5f, 0.5f, 0.5f, 1.0f]);
+                        var window = ObjResourceReader.CreateObject(Gl, [0.5f, 0.5f, 0.5f, 1.0f], "LabirintusProjekt.Resources.bars.obj");
                         windows.Add(window);
 
                         // kotelezo transzformaciok
                         var rotation = Matrix4X4.CreateRotationX(-(float)Math.PI / 2);
                         var resize  = Matrix4X4.CreateTranslation(-8.0f, -7.1f, 0.0f);
-                        var translation = Matrix4X4.CreateTranslation(x - 0.5f, 0f, y * 1f);
+                        var translation = Matrix4X4.CreateTranslation(x, 0f, y);
 
                         // nem tudom, melyik sik szerint kell forgatni, talan Z?
                         var placementRotation = Matrix4X4.CreateRotationZ(0f);
                         if (needsToRotate(labirintMap, x, y))
                         {
                             placementRotation = Matrix4X4.CreateRotationY((float)Math.PI / 2);
-                            translation = Matrix4X4.CreateTranslation(x - 0.5f, 0f, y + 0.5f);
+                            translation = Matrix4X4.CreateTranslation(x, 0f, y + 1f);
                         }
                         
                         var transformation = resize * rotation * placementRotation * translation;
 
                         windowTransformations.Add(transformation);
-
                     }
                 }
             }

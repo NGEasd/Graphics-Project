@@ -1,14 +1,6 @@
 ﻿using Silk.NET.OpenGL;
-using Silk.NET.Vulkan;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace GrafikaSzeminarium
+namespace LabirintusProjekt
 {
     internal class WallObject : IDisposable
     {
@@ -30,42 +22,43 @@ namespace GrafikaSzeminarium
 
             // counter clockwise is front facing
             var wallVertices = new float[] {
-                // hátsó oldal
-                -0.5f, 1.5f,  0.5f, 0f, 0f, 1f,  // 0 (y + 1)
-                 0.5f, 1.5f,  0.5f, 0f, 0f, 1f,  // 1 (y + 1)
-                 0.5f, 1.5f, -0.5f, 0f, 0f, 1f,  // 2 (y + 1)
-                -0.5f, 1.5f, -0.5f, 0f, 0f, 1f,  // 3 (y + 1)
 
-                // felső oldal (itt is nyújtunk)
-                -0.5f, 1.5f,  0.5f, 0f, 1f, 0f,  // 4 (y + 1)
-                -0.5f, -1.5f, 0.5f, 0f, 1f, 0f,  // 5 (y - 1)
-                 0.5f, -1.5f, 0.5f, 0f, 1f, 0f,  // 6 (y - 1)
-                 0.5f, 1.5f,  0.5f, 0f, 1f, 0f,  // 7 (y + 1)
+            // hátsó oldal
+            0f, 1.5f, 1f, 0f, 0f, 1f,
+            1f, 1.5f, 1f, 0f, 0f, 1f,
+            1f, 1.5f, 0f, 0f, 0f, 1f,
+            0f, 1.5f, 0f, 0f, 0f, 1f,
 
-                // bal oldal
-                -0.5f, 1.5f,  0.5f, -1f, 0f, 0f, // 8 (y + 1)
-                -0.5f, 1.5f, -0.5f, -1f, 0f, 0f, // 9 (y + 1)
-                -0.5f, -1.5f,-0.5f, -1f, 0f, 0f, // 10 (y - 1)
-                -0.5f, -1.5f, 0.5f, -1f, 0f, 0f, // 11 (y - 1)
+            // felső oldal
+            0f, 1.5f, 1f, 0f, 1f, 0f,
+            0f, -1.5f, 1f, 0f, 1f, 0f,
+            1f, -1.5f, 1f, 0f, 1f, 0f,
+            1f, 1.5f, 1f, 0f, 1f, 0f,
 
-                // elülső oldal (itt is nyújtunk)
-                -0.5f, -1.5f, 0.5f, 0f, 0f, -1f, // 12 (y - 1)
-                 0.5f, -1.5f, 0.5f, 0f, 0f, -1f, // 13 (y - 1)
-                 0.5f, -1.5f,-0.5f, 0f, 0f, -1f, // 14 (y - 1)
-                -0.5f, -1.5f,-0.5f, 0f, 0f, -1f, // 15 (y - 1)
+            // bal oldal
+            0f, 1.5f, 1f, -1f, 0f, 0f,
+            0f, 1.5f, 0f, -1f, 0f, 0f,
+            0f, -1.5f, 0f, -1f, 0f, 0f,
+            0f, -1.5f, 1f, -1f, 0f, 0f,
 
-                // alsó oldal (itt is nyújtunk)
-                 0.5f, 1.5f, -0.5f, 0f, -1f, 0f, // 16 (y + 1)
-                -0.5f, 1.5f, -0.5f, 0f, -1f, 0f, // 17 (y + 1)
-                -0.5f, -1.5f,-0.5f, 0f, -1f, 0f, // 18 (y - 1)
-                 0.5f, -1.5f,-0.5f, 0f, -1f, 0f, // 19 (y - 1)
+            // elülső oldal
+            0f, -1.5f, 1f, 0f, 0f, -1f,
+            1f, -1.5f, 1f, 0f, 0f, -1f,
+            1f, -1.5f, 0f, 0f, 0f, -1f,
+            0f, -1.5f, 0f, 0f, 0f, -1f,
 
-                // jobb oldal
-                 0.5f, 1.5f,  0.5f, 1f, 0f, 0f,  // 20 (y + 1)
-                 0.5f, 1.5f, -0.5f, 1f, 0f, 0f,  // 21 (y + 1)
-                 0.5f, -1.5f,-0.5f, 1f, 0f, 0f,  // 22 (y - 1)
-                 0.5f, -1.5f, 0.5f, 1f, 0f, 0f   // 23 (y - 1)
-            };
+            // alsó oldal
+            1f, 1.5f, 0f, 0f, -1f, 0f,
+            0f, 1.5f, 0f, 0f, -1f, 0f,
+            0f, -1.5f, 0f, 0f, -1f, 0f,
+            1f, -1.5f, 0f, 0f, -1f, 0f,
+
+            // jobb oldal
+            1f, 1.5f, 1f, 1f, 0f, 0f,
+            1f, 1.5f, 0f, 1f, 0f, 0f,
+            1f, -1.5f, 0f, 1f, 0f, 0f,
+            1f, -1.5f, 1f, 1f, 0f, 0f
+        };
 
 
             uint[] indexArray = new uint[] {

@@ -1,8 +1,7 @@
-﻿using GrafikaSzeminarium;
-using ImGuiNET;
+﻿using ImGuiNET;
+using LabirintusProjekt;
 using Silk.NET.Input;
 using Silk.NET.Maths;
-using Silk.NET.OpenAL;
 using Silk.NET.OpenGL;
 using Silk.NET.OpenGL.Extensions.ImGui;
 using Silk.NET.Windowing;
@@ -18,19 +17,30 @@ namespace Labirintus_projekt
 
         private static ImGuiController imGuiController;
 
+        // labirint components
         private static LabirintMap labirint;
-        private static LabirintWalls walls;
+        private static LabirintComponents components;
         private static WallObject floor;
 
+        // camera  and his starting position
         private static int startX;
         private static int startY;
-
         private static CameraDescriptor camera = new CameraDescriptor();
 
+        // character
+        private static PacmanCharacter player;
+
+        // collision message
+        private static string collMessage;
+
         // game variables
+        private static bool gameRunning = false;
+        private static double globalTimer = 0.0f;
+
         private static bool collisionMessage = false;
         private static double messageTimer = 0.0f;
-
+        private static bool isGhostTimerActive = false;
+        private static double ghostTimer = 0.0f;
 
         private const string ModelMatrixVariableName = "uModel";
         private const string NormalMatrixVariableName = "uNormal";
@@ -75,7 +85,7 @@ namespace Labirintus_projekt
 
         private static void GraphicWindow_Closing()
         {
-            walls.Dispose();
+            components.Dispose();
             Gl.DeleteProgram(program);
         }
 
@@ -83,16 +93,24 @@ namespace Labirintus_projekt
         {
             Gl = graphicWindow.CreateOpenGL();
 
+            // initialize player
+            player = new PacmanCharacter(Gl);
+
             // initialize labirint
             labirint = new LabirintMap();
-            walls = new LabirintWalls(labirint, Gl);
+            components = new LabirintComponents(labirint, Gl);
             floor = WallObject.CreateFloor(Gl);
 
             // initialize starting position
             var pos = labirint.GetStartingPosition();
             startX = pos[0];
             startY = pos[1];
-            camera.setPosition(startX, startY);
+
+            // set camera and player position
+            // default: third person!
+            player.Position = (new Vector3D<float>(startX, 0, startY));
+            player.updatePosition();
+            camera.UpdateCameraPositionFromPlayer(player.Position, player.GetPlayerForward(), player.GetPlayerRight());
 
             // set lightning
             int[] camStartPos = labirint.getLabirintCenter();
@@ -101,8 +119,8 @@ namespace Labirintus_projekt
             lightPosZ = camStartPos[1];
 
 
-        // directing player
-        var inputContext = graphicWindow.CreateInput();
+            // directing player
+            var inputContext = graphicWindow.CreateInput();
             foreach (var keyboard in inputContext.Keyboards)
             {
                 keyboard.KeyDown += Keyboard_KeyDown;
@@ -181,16 +199,25 @@ namespace Labirintus_projekt
 
         private static void GraphicWindow_Update(double deltaTime)
         {
-            // NO OpenGL
-            // make it threadsafe
-            MoveCamera();
-            RotateCamera();
             imGuiController.Update((float)deltaTime);
 
-            // collision check (for now - just camera)
-            checkCollision();
-            
+            if (gameRunning)
+            {
+                globalTimer += deltaTime;
+                MovePlayer();
+                MoveCamera();
+                RotateCameraAndCharachter();
+                foreach (var solider in components.soliders)
+                {
+                    solider.UpdatePosition(deltaTime, checkSoliderCollision);
+                }
 
+                // collision check (for now - just camera)
+                if (camera.defaultMode)
+                {
+                    checkCollision();
+                }
+            }
         }
 
         private static unsafe void GraphicWindow_Render(double deltaTime)
@@ -200,77 +227,155 @@ namespace Labirintus_projekt
 
             Gl.UseProgram(program);
 
-            SetUniform3(LightColorVariableName, new Vector3(1f, 1f, 1f));
-            SetUniform3(LightPositionVariableName, new Vector3(lightPosX, lightPosY, lightPosZ));
-            SetUniform3(ViewPositionVariableName, new Vector3(camera.Position.X, camera.Position.Y, camera.Position.Z));
-            SetUniform1(ShinenessVariableName, shininess);
-
-            SetUniform3(AmbientVariableName, ambientStrength);
-            SetUniform3(DiffuseVariableName, diffuseStrength);
-            SetUniform3(SpecularVariableName, specularStrength);
-
-            var viewMatrix = Matrix4X4.CreateLookAt(camera.Position, camera.Position + camera.ForwardVector, camera.UpVector);
-            SetMatrix(viewMatrix, ViewMatrixVariableName);
-
-            var projectionMatrix = Matrix4X4.CreatePerspectiveFieldOfView((float)(Math.PI / 2), 1024f / 768f, 0.1f, 100f);
-            SetMatrix(projectionMatrix, ProjectionMatrixVariableName);
-
-            for (int i = 0; i < walls.wallList.Count; i++)
+            if (gameRunning)
             {
-                var wall = walls.wallList[i];
-                var transform = walls.wallTransformations[i];
+                SetUniform3(LightColorVariableName, new Vector3(1f, 1f, 1f));
+                SetUniform3(LightPositionVariableName, new Vector3(lightPosX, lightPosY, lightPosZ));
+                SetUniform3(ViewPositionVariableName, new Vector3(camera.Position.X, camera.Position.Y, camera.Position.Z));
+                SetUniform1(ShinenessVariableName, shininess);
 
-                SetModelMatrix(transform);
-                DrawModelObject(wall);
-            }
+                SetUniform3(AmbientVariableName, ambientStrength);
+                SetUniform3(DiffuseVariableName, diffuseStrength);
+                SetUniform3(SpecularVariableName, specularStrength);
 
-            var t = Matrix4X4.CreateTranslation(0f, 0f, 0f);
-            SetModelMatrix(t);
-            DrawModelObject(floor);
+                var viewMatrix = Matrix4X4.CreateLookAt(camera.Position, camera.Position + camera.ForwardVector, camera.UpVector);
+                SetMatrix(viewMatrix, ViewMatrixVariableName);
 
-            for (int i = 0; i < walls.windows.Count; i++)
-            {
-                var window = walls.windows[i];
-                var transform = walls.windowTransformations[i];
+                var projectionMatrix = Matrix4X4.CreatePerspectiveFieldOfView((float)(Math.PI / 2), 1024f / 768f, 0.1f, 100f);
+                SetMatrix(projectionMatrix, ProjectionMatrixVariableName);
 
-                SetModelMatrix(transform);
-                DrawGlObject(window);
-            }
-
-            // utkozesi hibauzenet
-            if (collisionMessage)
-            {
-                ShowCollisionMessage();
-                messageTimer -= deltaTime;
-                if (messageTimer <= 0.0f)
+                // render bars
+                for (int i = 0; i < components.wallList.Count; i++)
                 {
-                    collisionMessage = false;
-                }
-            }
+                    var wall = components.wallList[i];
+                    var transform = components.wallTransformations[i];
 
-            // Ghost Mode gomb
+                    SetModelMatrix(transform);
+                    DrawModelObject(wall);
+                }
+
+                // render floor
+                var t = Matrix4X4.CreateTranslation(0f, 0f, 0f);
+                SetModelMatrix(t);
+                DrawModelObject(floor);
+
+                // render windows/bars
+                for (int i = 0; i < components.windows.Count; i++)
+                {
+                    var window = components.windows[i];
+                    var transform = components.windowTransformations[i];
+
+                    SetModelMatrix(transform);
+                    DrawGlObject(window);
+                }
+
+                // render player
+                SetModelMatrix(player.transfHead);
+                DrawGlObject(player.head);
+
+                // render soliders
+                for (int i = 0; i < components.soliders.Count; i++)
+                {
+                    var solider = components.soliders[i];
+                    var transform = solider.transformation;
+
+                    SetModelMatrix(transform);
+                    DrawGlObject(solider.body);
+                }
+
+                SetModelMatrix(player.transfLegs);
+                DrawGlObject(player.legs);
+
+                // collision message
+                if (collisionMessage)
+                {
+                    ShowCollisionMessage(collMessage);
+                    messageTimer -= deltaTime;
+                    if (messageTimer <= 0.0f)
+                    {
+                        collisionMessage = false;
+                    }
+                }
+
+                // ghost Mode button
+                GhostModeButton();
+
+                if (isGhostTimerActive)
+                {
+                    GhostModeTimer(deltaTime);
+                }
+                ImGui.End();
+
+                ManageGlobalTimer();
+            }
+            else
+            {
+                ImGui.Begin("Start Menu", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize);
+                ImGui.SetWindowPos(new System.Numerics.Vector2(graphicWindow.Size.X / 2 - 100, graphicWindow.Size.Y / 2 - 50), ImGuiCond.Always);
+
+                if (ImGui.Button("Start Game", new System.Numerics.Vector2(200, 100)))
+                {
+                    Console.WriteLine("Gomb start kapcs");
+                    if (!gameRunning)
+                    {
+                        gameRunning = true;
+                        globalTimer = 0;
+                        Console.WriteLine("Játék elindítva!");
+                    }
+                }
+                ImGui.End();
+            }
+            
+
+            imGuiController.Render();
+        }
+
+        private static unsafe void GhostModeButton()
+        {
             ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.Always);
             ImGui.Begin("Camera Mode", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoMove);
 
-            if (camera.ghostMode)
-            {
-                ImGui.BeginDisabled();
-            }
 
             if (ImGui.Button("GHOST MODE"))
             {
                 camera.changeCameraModeToGhost();
+                isGhostTimerActive = true;
+                ghostTimer = 15;
+                globalTimer += 30;
             }
 
             if (camera.defaultMode)
             {
-                ImGui.EndDisabled();
+                if (ImGui.Button("FIRST PERSON VIEW"))
+                {
+                    Console.WriteLine("FIRST PERSON!");
+                    camera.changeViewToFirst();
+                }
+
+                if (ImGui.Button("THIRD PERSON VIEW"))
+                {
+                    Console.WriteLine("THIRD");
+                    camera.changeViewToThird();
+                }
             }
+        }
 
-            ImGui.End();
+        private static unsafe void ManageGlobalTimer()
+        {
+            int minutes = (int)(globalTimer / 60);
+            double seconds = globalTimer % 60;
+            string timerText = $"ELAPSED TIME: {minutes:D2}:{(int)seconds:D2}";
 
+            System.Numerics.Vector2 textSize = ImGui.CalcTextSize(timerText);
+            System.Numerics.Vector2 textPosition = new System.Numerics.Vector2(
+                graphicWindow.Size.X / 2 - textSize.X / 2,
+                10
+            );
+            System.Numerics.Vector2 labelSize = textSize + new System.Numerics.Vector2(10, 5);
+            System.Numerics.Vector2 labelPosition = textPosition - new System.Numerics.Vector2(5, 2);
 
-            imGuiController.Render();
+            ImGui.GetForegroundDrawList().AddRectFilled(labelPosition, labelPosition + labelSize, 0xFF000000);
+            ImGui.GetForegroundDrawList().AddText(textPosition, 0xFFFFFFFF, timerText);
         }
 
         private static unsafe void SetModelMatrix(Matrix4X4<float> modelMatrix)
@@ -359,7 +464,7 @@ namespace Labirintus_projekt
         }
 
 
-        // camera controll
+        // CAMERA controll
         private static void Keyboard_KeyDown(IKeyboard keyboard, Key key, int arg3)
         {
             switch (key)
@@ -433,68 +538,158 @@ namespace Labirintus_projekt
 
         private static void MoveCamera()
         {
-            if (camera.pressedForward)
+            if (camera.ghostMode)
             {
-                camera.MoveForward();
+                if (camera.pressedForward)
+                {
+                    camera.MoveForward();
+                }
+                else if (camera.pressedBackward)
+                {
+                    camera.MoveBackward();
+                }
+                else if (camera.pressedLeft)
+                {
+                    camera.MoveLeft();
+                }
+                else if (camera.pressedRight)
+                {
+                    camera.MoveRight();
+                }
             }
-            else if (camera.pressedBackward)
+            
+        }
+
+        private static void RotateCameraAndCharachter()
+        {
+            // in ghost mode, camera can rotate separatelly
+            if (camera.ghostMode)
             {
-                camera.MoveBackward();
+                if (camera.pressedRLeft)
+                {
+                    camera.Rotate(-1, 0);
+                }
+                else if (camera.pressedRRight)
+                {
+                    camera.Rotate(1, 0);
+                }
+                else if (camera.pressedRUp)
+                {
+                    camera.Rotate(0, 1);
+                }
+                else if (camera.pressedRDown)
+                {
+                    camera.Rotate(0, -1);
+                }
             }
-            else if (camera.pressedLeft)
+            
+            // in default mode, camera follows the player
+            if (camera.defaultMode)
             {
-                camera.MoveLeft();
-            }
-            else if (camera.pressedRight)
-            {
-                camera.MoveRight();
+                if (camera.pressedRLeft)
+                {
+                    player.Rotate(-1);
+                }
+                else if (camera.pressedRRight)
+                {
+                    player.Rotate(1);
+                }
+
+                camera.Yaw = player.yaw;
+
             }
         }
 
-        private static void RotateCamera()
+        // update player`s position
+        private static void MovePlayer()
         {
-            if (camera.pressedRLeft)
+            if (!camera.defaultMode) return;
+
+            Vector3D<float> direction = new Vector3D<float>(0, 0, 0);
+
+            if (camera.pressedForward)
+                direction += player.GetPlayerForward();
+            if (camera.pressedBackward)
+                direction -= player.GetPlayerForward();
+            if (camera.pressedRight)
+                direction += player.GetPlayerRight();
+            if (camera.pressedLeft)
+                direction -= player.GetPlayerRight();
+
+            if (direction.Length > 0)
             {
-                camera.Rotate(-1, 0);
+                direction = Vector3D.Normalize(direction);
+                player.Position += direction * 0.05f;
             }
-            else if (camera.pressedRRight)
-            {
-                camera.Rotate(1, 0);
-            }
-            else if (camera.pressedRUp)
-            {
-                camera.Rotate(0, 1);
-            }
-            else if (camera.pressedRDown)
-            {
-                camera.Rotate(0, -1);
-            }
+
+            player.updatePosition();
+            camera.UpdateCameraPositionFromPlayer(player.Position, player.GetPlayerForward(), player.GetPlayerRight());
         }
 
         // GAME LOGICS
         private static void checkCollision()
         {
-            int mapX = (int)Math.Floor(camera.Position.X);
-            int mapY = (int)Math.Floor(camera.Position.Z);
+            // wall
+            int mapX = (int)Math.Floor(player.Position.X);
+            int mapY = (int)Math.Floor(player.Position.Z);
 
             int tile = labirint.Get(mapX, mapY);
             bool isObstacle = tile == 1 || tile == 9;
 
             if (isObstacle)
             {
-                Console.WriteLine("Nekiütköztél egy falnak vagy akadálynak!");
                 collisionMessage = true;
+                collMessage = "YOU COLLIDED WITH WALL! TRY AGAIN!";
 
-                // Kamera visszaállítása kezdőpozícióra
-                camera.setPosition(startX, startY);
+                // reset player
+                player.Position = (new Vector3D<float>(startX, 0, startY));
+
+                // reset camera
+                camera.changeViewToFirst();
+                camera.UpdateCameraPositionFromPlayer(player.Position, player.GetPlayerForward(), player.GetPlayerRight());
                 messageTimer = 2.0;
 
             }
+
+            // solider
+            foreach(var solider in components.soliders)
+            {
+                if (checkSoliderCollisionwithPlayer(solider.Position))
+                {
+                    collisionMessage = true;
+                    collMessage = "YOU COLLIDED WITH A SOLIDER! TRY AGAIN!";
+
+                    // reset player
+                    player.Position = (new Vector3D<float>(startX, 0, startY));
+
+                    // reset camera
+                    camera.changeViewToFirst();
+                    camera.UpdateCameraPositionFromPlayer(player.Position, player.GetPlayerForward(), player.GetPlayerRight());
+                    messageTimer = 2.0;
+                }
+            }
+
         }
 
 
         // GRAPHICS
-        private static void ShowCollisionMessage()
+        private static unsafe void GhostModeTimer(double deltaTime)
+        {
+            ImGui.Begin("Ghost Mode Timer", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize);
+            ImGui.TextColored(new System.Numerics.Vector4(1, 0, 0, 1),
+                $"Ghost Mode: {ghostTimer:F1} sec");
+            ImGui.End();
+
+            ghostTimer -= deltaTime;
+            if (ghostTimer <= 0f)
+            {
+                isGhostTimerActive = false;
+                ghostTimer = 0f;
+                camera.changeCameraModeToDefault();
+            }
+        }
+
+        private static void ShowCollisionMessage(String message)
         {
             var io = ImGui.GetIO();
             var windowWidth = io.DisplaySize.X;
@@ -509,20 +704,68 @@ namespace Labirintus_projekt
 
             ImGui.SetNextWindowPos(new Vector2(posX, posY), ImGuiCond.Always);
             ImGui.SetNextWindowSize(new Vector2(messageWidth, messageHeight));
-            ImGui.SetNextWindowBgAlpha(1.0f); // teljesen átlátszatlan háttér
+            ImGui.SetNextWindowBgAlpha(1.0f); 
 
             ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0f, 0f, 0f, 0.85f)); // fekete háttér
             ImGui.Begin("CollisionMessage", ImGuiWindowFlags.NoTitleBar | ImGuiWindowFlags.NoResize |
                                             ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse |
                                             ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoSavedSettings);
 
-            ImGui.SetCursorPosX((messageWidth - ImGui.CalcTextSize("JUST COLLIDED WITH THE WALLS - LETS START AGAIN!").X) / 2f);
+            ImGui.SetCursorPosX((messageWidth - ImGui.CalcTextSize(message).X) / 2f);
             ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1f, 0.3f, 0.3f, 1f)); // piros szöveg
-            ImGui.Text("JUST COLLIDED WITH THE WALLS - LETS START AGAIN!");
+            ImGui.Text(message);
             ImGui.PopStyleColor();
 
             ImGui.End();
             ImGui.PopStyleColor();
         }
+
+        private static bool checkSoliderCollision(Vector3D<float> nextPosition)
+        {
+            float halfSize = 0.30f;
+
+            Vector3D<float>[] checkPoints = new Vector3D<float>[]
+            {
+                nextPosition,
+                nextPosition + new Vector3D<float>(halfSize, 0, 0),
+                nextPosition - new Vector3D<float>(halfSize, 0, 0),
+                nextPosition + new Vector3D<float>(0, 0, halfSize),
+                nextPosition - new Vector3D<float>(0, 0, halfSize)
+            };
+
+            foreach (var point in checkPoints)
+            {
+                int mapX = (int)Math.Floor(point.X);
+                int mapY = (int)Math.Floor(point.Z);
+
+                if (mapX >= 0 && mapX < labirint.Width && mapY >= 0 && mapY < labirint.Height)
+                {
+                    int tile = labirint.Get(mapX, mapY);
+                    if (tile == 1 || tile == 9)
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool checkSoliderCollisionwithPlayer(Vector3D<float> soliderPosition)
+        {
+            float deltaX = player.Position.X - soliderPosition.X;
+            float deltaY = player.Position.Y - soliderPosition.Y;
+            float deltaZ = player.Position.Z - soliderPosition.Z;
+
+            float distanceSquared = (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ);
+
+            return distanceSquared < (0.30f * 0.30f);
+        }
+
+
     }
 }

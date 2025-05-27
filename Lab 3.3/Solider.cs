@@ -1,13 +1,13 @@
-﻿using Labirintus_projekt;
-using Silk.NET.Maths;
+﻿using Silk.NET.Maths;
 using Silk.NET.OpenGL;
 
 namespace LabirintusProjekt
 {
-    class Solider
+    class Soldier
     {
         public GL gl;
-        public GlObject body;
+        public TexturedObject body;
+        private TextureReader reader;
 
         public Vector3D<float> Position { get; set; } = new Vector3D<float>(0, 0, 0);
         public Matrix4X4<float> transformation;
@@ -16,16 +16,25 @@ namespace LabirintusProjekt
         public float Speed { get; private set; }
         private Random random = new Random();
 
-        public Solider(GL gl, Vector3D<float> startPosition)
+        public Soldier(GL gl, Vector3D<float> startPosition, string textureFilename)
         {
             this.gl = gl;
             transformation = Matrix4X4.CreateTranslation(Position);
             Position = startPosition;
             transformation = Matrix4X4.CreateTranslation(Position);
-            body = ObjResourceReader.CreateObject(gl, [0.2f, 0.2f, 0.2f, 1.0f], "LabirintusProjekt.Resources.rs.obj");
+            reader = new TextureReader();
+            if (reader.ReadObjFile("LabirintusProjekt.Resources.textured_solider.obj"))
+            {
+                body = TexturedObject.CreateSolider(gl);
+            }
+            else
+            {
+                Console.WriteLine("Nem sikerült betölteni a katona modelljét.");
+                body = null; 
+            }
+
             SetRandomDirection();
             SetRandomSpeed(0.8f, 3f);
-
         }
 
         private void SetRandomDirection()
@@ -37,10 +46,10 @@ namespace LabirintusProjekt
                 case 0:
                     Direction = new Vector3D<float>(1, 0, 0);
                     break;
-                case 1: 
+                case 1:
                     Direction = new Vector3D<float>(-1, 0, 0);
                     break;
-                case 2: 
+                case 2:
                     Direction = new Vector3D<float>(0, 0, 1);
                     break;
                 case 3:
@@ -69,6 +78,5 @@ namespace LabirintusProjekt
 
             transformation = Matrix4X4.CreateTranslation(Position);
         }
-
     }
 }

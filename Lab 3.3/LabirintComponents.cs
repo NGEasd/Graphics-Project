@@ -7,7 +7,7 @@ namespace Labirintus_projekt
     class LabirintComponents
     {
         public List<GlObject> windows;
-        public List<Solider> soliders;
+        public List<Soldier> soliders;
         public List<WallObject> wallList;
         public List<Matrix4X4<float>> windowTransformations;
         public List<Matrix4X4<float>> wallTransformations;
@@ -19,7 +19,7 @@ namespace Labirintus_projekt
         public LabirintComponents(LabirintMap labirintMap, GL gl)
         {
             windows = new List<GlObject>();
-            soliders = new List<Solider>();
+            soliders = new List<Soldier>();
             wallList = new List<WallObject>();
             windowTransformations = new List<Matrix4X4<float>>();
             wallTransformations = new List<Matrix4X4<float>>();
@@ -41,7 +41,7 @@ namespace Labirintus_projekt
 
                     if (labirintMap.Get(x, y) == 7)
                     {
-                        Solider solider = new Solider(Gl, new Vector3D<float>(x, 0f, y));
+                        Soldier solider = new Soldier(Gl, new Vector3D<float>(x, 0f, y), "LabirintusProjekt.Resources.armor_texture.jpg");
                         soliders.Add(solider);
                     }
 

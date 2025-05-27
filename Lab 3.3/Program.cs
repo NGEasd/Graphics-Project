@@ -21,6 +21,7 @@ namespace Labirintus_projekt
         private static LabirintMap labirint;
         private static LabirintComponents components;
         private static WallObject floor;
+        private static SkyboxObject skybox;
 
         // camera  and his starting position
         private static int startX;
@@ -34,6 +35,7 @@ namespace Labirintus_projekt
         private static string collMessage;
 
         // game variables
+        private static bool winner = false;
         private static bool gameRunning = false;
         private static double globalTimer = 0.0f;
 
@@ -46,6 +48,8 @@ namespace Labirintus_projekt
         private const string NormalMatrixVariableName = "uNormal";
         private const string ViewMatrixVariableName = "uView";
         private const string ProjectionMatrixVariableName = "uProjection";
+
+        private const string TextureVariableName = "uTexture";
 
         private const string LightColorVariableName = "uLightColor";
         private const string LightPositionVariableName = "uLightPos";
@@ -71,7 +75,7 @@ namespace Labirintus_projekt
         {
             WindowOptions windowOptions = WindowOptions.Default;
             windowOptions.Title = "Labirintus";
-            windowOptions.Size = new Vector2D<int>(500, 500);
+            windowOptions.Size = new Vector2D<int>(1200, 800);
 
             graphicWindow = Window.Create(windowOptions);
 
@@ -100,6 +104,7 @@ namespace Labirintus_projekt
             labirint = new LabirintMap();
             components = new LabirintComponents(labirint, Gl);
             floor = WallObject.CreateFloor(Gl);
+            skybox = SkyboxObject.CreateSkyBox(Gl); ;
 
             // initialize starting position
             var pos = labirint.GetStartingPosition();
@@ -201,7 +206,7 @@ namespace Labirintus_projekt
         {
             imGuiController.Update((float)deltaTime);
 
-            if (gameRunning)
+            if (gameRunning && !winner)
             {
                 globalTimer += deltaTime;
                 MovePlayer();
@@ -227,22 +232,21 @@ namespace Labirintus_projekt
 
             Gl.UseProgram(program);
 
-            if (gameRunning)
+            if (gameRunning && !winner)
             {
                 SetUniform3(LightColorVariableName, new Vector3(1f, 1f, 1f));
                 SetUniform3(LightPositionVariableName, new Vector3(lightPosX, lightPosY, lightPosZ));
                 SetUniform3(ViewPositionVariableName, new Vector3(camera.Position.X, camera.Position.Y, camera.Position.Z));
                 SetUniform1(ShinenessVariableName, shininess);
 
-                SetUniform3(AmbientVariableName, ambientStrength);
-                SetUniform3(DiffuseVariableName, diffuseStrength);
-                SetUniform3(SpecularVariableName, specularStrength);
-
                 var viewMatrix = Matrix4X4.CreateLookAt(camera.Position, camera.Position + camera.ForwardVector, camera.UpVector);
                 SetMatrix(viewMatrix, ViewMatrixVariableName);
 
                 var projectionMatrix = Matrix4X4.CreatePerspectiveFieldOfView((float)(Math.PI / 2), 1024f / 768f, 0.1f, 100f);
                 SetMatrix(projectionMatrix, ProjectionMatrixVariableName);
+
+                // draw skybox
+                DrawSkyBox();
 
                 // render bars
                 for (int i = 0; i < components.wallList.Count; i++)
@@ -280,7 +284,7 @@ namespace Labirintus_projekt
                     var transform = solider.transformation;
 
                     SetModelMatrix(transform);
-                    DrawGlObject(solider.body);
+                    DrawSolider(solider.body);
                 }
 
                 SetModelMatrix(player.transfLegs);
@@ -308,6 +312,25 @@ namespace Labirintus_projekt
 
                 ManageGlobalTimer();
             }
+            else if (winner)
+            {
+                ImGui.Begin("Congratulation!", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize);
+                ImGui.SetWindowPos(new System.Numerics.Vector2(graphicWindow.Size.X / 2 - 100, graphicWindow.Size.Y / 2 - 50), ImGuiCond.Always);
+
+                int minutes = (int)(globalTimer / 60);
+                double seconds = globalTimer % 60;
+                string finalTimeText = $"Your Time: {minutes:D2}:{(int)seconds:D2}";
+
+                ImGui.Text("Congratulations, you won!");
+                ImGui.Text(finalTimeText); 
+
+                if (ImGui.Button("Exit Game", new System.Numerics.Vector2(150, 30)))
+                {
+                    graphicWindow.Close();
+                }
+
+                ImGui.End();
+            }
             else
             {
                 ImGui.Begin("Start Menu", ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.AlwaysAutoResize);
@@ -328,6 +351,53 @@ namespace Labirintus_projekt
             
 
             imGuiController.Render();
+        }
+
+        private static unsafe void DrawSkyBox()
+        {
+            var modelMatrixSkyBox = Matrix4X4.CreateScale(100f);
+            SetModelMatrix(modelMatrixSkyBox);
+
+            // set the texture
+            int textureLocation = Gl.GetUniformLocation(program, TextureVariableName);
+            if (textureLocation == -1)
+            {
+                throw new Exception($"{TextureVariableName} uniform not found on shader.");
+            }
+            // set texture 0
+            Gl.Uniform1(textureLocation, 0);
+            Gl.ActiveTexture(TextureUnit.Texture0);
+            Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (float)GLEnum.Linear);
+            Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (float)GLEnum.Linear);
+            Gl.BindTexture(TextureTarget.Texture2D, skybox.Texture.Value);
+
+            DrawSkyObject(skybox);
+
+            CheckError();
+            Gl.BindTexture(TextureTarget.Texture2D, 0);
+            CheckError();
+        }
+
+        private static unsafe void DrawSolider(TexturedObject obj)
+        {;
+            // set the texture
+            int textureLocation = Gl.GetUniformLocation(program, TextureVariableName);
+            if (textureLocation == -1)
+            {
+                throw new Exception($"{TextureVariableName} uniform not found on shader.");
+            }
+            // set texture 0
+            Gl.Uniform1(textureLocation, 0);
+            Gl.ActiveTexture(TextureUnit.Texture0);
+            Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (float)GLEnum.Linear);
+            Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (float)GLEnum.Linear);
+            Gl.BindTexture(TextureTarget.Texture2D, obj.Texture.Value);
+
+            DrawTexturedObject(obj);
+
+            CheckError();
+            Gl.BindTexture(TextureTarget.Texture2D, 0);
+            CheckError();
         }
 
         private static unsafe void GhostModeButton()
@@ -429,6 +499,23 @@ namespace Labirintus_projekt
         }
 
         private static unsafe void DrawModelObject(WallObject modelObject)
+        {
+            Gl.BindVertexArray(modelObject.Vao);
+            Gl.BindBuffer(GLEnum.ElementArrayBuffer, modelObject.Indices);
+            Gl.DrawElements(PrimitiveType.Triangles, modelObject.IndexArrayLength, DrawElementsType.UnsignedInt, null);
+            Gl.BindBuffer(GLEnum.ElementArrayBuffer, 0);
+            Gl.BindVertexArray(0);
+        }
+
+        private static unsafe void DrawSkyObject(SkyboxObject modelObject)
+        {
+            Gl.BindVertexArray(modelObject.Vao);
+            Gl.BindBuffer(GLEnum.ElementArrayBuffer, modelObject.Indices);
+            Gl.DrawElements(PrimitiveType.Triangles, modelObject.IndexArrayLength, DrawElementsType.UnsignedInt, null);
+            Gl.BindBuffer(GLEnum.ElementArrayBuffer, 0);
+            Gl.BindVertexArray(0);
+        }
+        private static unsafe void DrawTexturedObject(TexturedObject modelObject)
         {
             Gl.BindVertexArray(modelObject.Vao);
             Gl.BindBuffer(GLEnum.ElementArrayBuffer, modelObject.Indices);
@@ -635,6 +722,9 @@ namespace Labirintus_projekt
 
             int tile = labirint.Get(mapX, mapY);
             bool isObstacle = tile == 1 || tile == 9;
+
+            // check if the player wins
+            if (tile == 3) winner = true;
 
             if (isObstacle)
             {
